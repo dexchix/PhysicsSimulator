@@ -126,16 +126,30 @@ public:
                 float distance = delta.Length();
                 float minDistance = a->radius + b->radius;
 
-                if (distance < minDistance) {
-                    Vec2 normal = delta.Normalized();
-
+                if (distance < minDistance && distance > 0.0f) {
+                    Vec2 normal = delta / distance; 
                     float overlap = minDistance - distance;
-                    a->position -= normal * overlap * 0.5f;
-                    b->position += normal * overlap * 0.5f;
+
+                    float totalInvMass = a->invMass + b->invMass;
+                    if (totalInvMass > 0.0f) {
+                        Vec2 correction = normal * overlap;
+                        a->position -= correction * (a->invMass / totalInvMass);
+                        b->position += correction * (b->invMass / totalInvMass);
+                    }
+
+
+                    Vec2 relativeVelocity = b->velocity - a->velocity;
+                    float velocityAlongNormal = Vec2::Dot(relativeVelocity, normal);
+
+                    if (velocityAlongNormal > 0) continue;
 
                     float restitution = (a->restitution + b->restitution) * 0.5f;
-                    a->velocity = a->velocity - (1.0f + restitution) * Vec2::Dot(a->velocity, normal) * normal;
-                    b->velocity = b->velocity - (1.0f + restitution) * Vec2::Dot(b->velocity, normal) * normal;
+                    float j = -(1.0f + restitution) * velocityAlongNormal;
+                    j /= totalInvMass;
+
+                    Vec2 impulse = j * normal;
+                    a->velocity -= impulse * a->invMass;
+                    b->velocity += impulse * b->invMass;
                 }
             }
         }
@@ -149,16 +163,15 @@ int main() {
     PhysicsWorld world(Vec2(0, 500.0f));
 
     Particle* ball = world.AddParticle(Vec2(400.0f, 50.0f), 1.0f, 20.0f, 0.8f);
-    Particle* ground = world.AddParticle(Vec2(400.0f, 550.0f), 0.0f, 100.0f, 0.2f);
+    Particle* ground = world.AddParticle(Vec2(400.0f, 550.0f), 0.0f, 0.0f, 0.2f);
 
     sf::CircleShape ballShape(ball->radius);
     ballShape.setFillColor(sf::Color::Red);
     ballShape.setOrigin(ball->radius, ball->radius);
 
-    sf::CircleShape groundShape(ground->radius);
+    sf::RectangleShape groundShape(sf::Vector2f(800.0f, 100.0f));
     groundShape.setFillColor(sf::Color::Green);
-    groundShape.setOrigin(ground->radius, ground->radius);
-    groundShape.setScale(4.0f, 0.2f);
+    groundShape.setPosition(0, 500); // Позиционируем вручную
 
     sf::Clock clock;
 
@@ -175,7 +188,6 @@ int main() {
         world.Update(dt);
 
         ballShape.setPosition(ball->position.x, ball->position.y);
-        groundShape.setPosition(ground->position.x, ground->position.y);
 
         window.clear(sf::Color::Black);
         window.draw(groundShape);
