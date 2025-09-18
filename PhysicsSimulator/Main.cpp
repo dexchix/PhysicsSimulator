@@ -1,7 +1,6 @@
 ﻿#include <SFML/Graphics.hpp>
 #include <iostream>
 
-// Вектор
 struct Vec2 {
     float x, y;
     Vec2() : x(0), y(0) {}
@@ -10,9 +9,47 @@ struct Vec2 {
     Vec2 operator+(const Vec2& other) const { return Vec2(x + other.x, y + other.y); }
     Vec2 operator-(const Vec2& other) const { return Vec2(x - other.x, y - other.y); }
     Vec2 operator*(float scalar) const { return Vec2(x * scalar, y * scalar); }
+    Vec2 operator/(float scalar) const { return Vec2(x / scalar, y / scalar); }
+
     Vec2& operator+=(const Vec2& other) { x += other.x; y += other.y; return *this; }
+    Vec2& operator-=(const Vec2& other) { x -= other.x; y -= other.y; return *this; } // <- ДОБАВЬ ЭТО
+    Vec2& operator*=(float scalar) { x *= scalar; y *= scalar; return *this; }
+    Vec2& operator/=(float scalar) { x /= scalar; y /= scalar; return *this; }
+
+    Vec2 operator-() const { return Vec2(-x, -y); }
+
+    float Length() const {
+        return sqrtf(x * x + y * y);
+    }
+
+    float LengthSquared() const {
+        return x * x + y * y;
+    }
+
+    Vec2 Normalized() const {
+        float len = Length();
+        if (len > 0.0f) {
+            return Vec2(x / len, y / len);
+        }
+        return *this;
+    }
+
+    void Normalize() {
+        float len = Length();
+        if (len > 0.0f) {
+            x /= len;
+            y /= len;
+        }
+    }
+
+    static float Dot(const Vec2& a, const Vec2& b) {
+        return a.x * b.x + a.y * b.y;
+    }
 };
 
+inline Vec2 operator*(float scalar, const Vec2& vec) {
+    return Vec2(scalar * vec.x, scalar * vec.y);
+}
 // Частица
 class Particle {
 public:
@@ -47,7 +84,6 @@ public:
     }
 };
 
-// Мир
 class PhysicsWorld {
 public:
     std::vector<std::unique_ptr<Particle>> particles;
@@ -76,6 +112,32 @@ public:
             std::cout << "Before integrate - Pos: (" << p->position.x << ", " << p->position.y << ")\n";
             p->Integrate(dt);
             std::cout << "After integrate - Pos: (" << p->position.x << ", " << p->position.y << ")\n";
+        }
+        CheckAndResolveCollisions();
+    }
+
+    void CheckAndResolveCollisions() {
+        for (size_t i = 0; i < particles.size(); ++i) {
+            for (size_t j = i + 1; j < particles.size(); ++j) {
+                Particle* a = particles[i].get();
+                Particle* b = particles[j].get();
+
+                Vec2 delta = b->position - a->position;
+                float distance = delta.Length();
+                float minDistance = a->radius + b->radius;
+
+                if (distance < minDistance) {
+                    Vec2 normal = delta.Normalized();
+
+                    float overlap = minDistance - distance;
+                    a->position -= normal * overlap * 0.5f;
+                    b->position += normal * overlap * 0.5f;
+
+                    float restitution = (a->restitution + b->restitution) * 0.5f;
+                    a->velocity = a->velocity - (1.0f + restitution) * Vec2::Dot(a->velocity, normal) * normal;
+                    b->velocity = b->velocity - (1.0f + restitution) * Vec2::Dot(b->velocity, normal) * normal;
+                }
+            }
         }
     }
 };
@@ -122,7 +184,6 @@ int main() {
 
         std::cout << "Ball position: (" << ball->position.x << ", " << ball->position.y << ")\n";
 
-        // Сброс шара если улетел
         if (ball->position.y > 800) {
             ball->position = Vec2(400.0f, 50.0f);
             ball->velocity = Vec2(0, 0);
